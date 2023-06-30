@@ -1,0 +1,10 @@
+.board-container {
+  display: flex;
+  justify-content: center;
+}
+
+.board .cell {
+  aspect-ratio: 1;
+  font-size: 3rem;
+  width: 5rem;
+}
