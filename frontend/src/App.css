@@ -1,3 +1,7 @@
+:root {
+  font-family: sans-serif;
+}
+
 .board-container {
   display: flex;
   justify-content: center;
@@ -7,4 +11,28 @@
   aspect-ratio: 1;
   font-size: 3rem;
   width: 5rem;
+}
+
+.new-game-form-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.new-game-form-container h2 {
+  text-align: center;
+  font-size: 4rem;
+}
+
+.new-game-form {
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.new-game-form input,
+.new-game-form button {
+  padding: 1rem;
+  font-size: 2rem;
 }

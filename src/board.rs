@@ -29,6 +29,7 @@ pub struct Board {
     data: Vec<Cell>,
 }
 
+#[derive(Debug)]
 pub enum Error {
     CoordinatesOutOfBound,
     InvalidMove,
@@ -45,12 +46,6 @@ pub enum ExternalCell {
     Flagged,
     #[serde(rename = "unrevealed")]
     Unrevealed,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct ExternalGameState {
-    board_state: Vec<ExternalCell>,
-    board_size: usize,
 }
 
 impl Board {
@@ -179,9 +174,8 @@ impl Board {
     /**
      * Returns the state of the game suitable for consumption on client side
      */
-    pub fn get_external_state(self: &Board) -> ExternalGameState {
-        let board_state: Vec<ExternalCell> = self
-            .iter_cells()
+    pub fn get_external_state(self: &Board) -> Vec<ExternalCell> {
+        self.iter_cells()
             .enumerate()
             .map(|(index, cell)| match cell.state {
                 CellState::Unrevealed => ExternalCell::Unrevealed,
@@ -194,12 +188,7 @@ impl Board {
                     },
                 },
             })
-            .collect();
-
-        ExternalGameState {
-            board_state,
-            board_size: self.size(),
-        }
+            .collect::<Vec<ExternalCell>>()
     }
 
     fn to_index(size: usize, row: usize, column: usize) -> Option<usize> {

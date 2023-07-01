@@ -1,48 +1,28 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import "./App.css";
-import { GameState, RemoteGame, DefaultRemoteGame } from "./game";
-import { Board } from "./components/Board";
-
-const game: RemoteGame = new DefaultRemoteGame();
+import { RemoteGame } from "./game";
+import { Client, GameConfig } from "./client";
+import GameCreationFrom from "./components/GameCreationForm";
+import GameView from "./components/GameView";
 
 function App() {
-  const [board, setBoard] = useState<GameState | null>(null);
+  const client = new Client();
+  const [connectedGame, setConnectedGame] = useState<RemoteGame | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      setBoard(await game.getBoard());
-    })();
-  }, []);
-
-  const onReveal = (index: number) => {
-    game.reveal(index).then(() =>
-      game.getBoard().then((board) => {
-        setBoard(board);
-      })
-    );
-  };
-
-  const onToggleFlag = async (index: number) => {
-    game.toggleFlag(index).then(() =>
-      game.getBoard().then((board) => {
-        setBoard(board);
-      })
-    );
+  const createGame = async (gameConfig: GameConfig, name: string) => {
+    const game = await client.newGame(gameConfig, name);
+    setConnectedGame(game);
   };
 
   return (
     <>
-      <div className="board-container">
-        {board === null ? (
-          <></>
-        ) : (
-          <Board
-            state={board}
-            onReveal={onReveal}
-            onToggleFlag={onToggleFlag}
-          ></Board>
-        )}
-      </div>
+      {connectedGame !== null ? (
+        <GameView game={connectedGame} />
+      ) : (
+        <GameCreationFrom
+          onRequestGame={async (config, name) => await createGame(config, name)}
+        />
+      )}
     </>
   );
 }

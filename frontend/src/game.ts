@@ -12,38 +12,59 @@ export interface GameState {
 
 export interface RemoteGame {
   size: number;
-  getBoard: () => Promise<GameState>;
-  reveal: (index: number) => Promise<void>;
-  toggleFlag: (index: number) => Promise<void>;
+  onBoardUpdated: (listener: (GameState: GameState) => void) => void;
+  getBoard: () => GameState | null;
+  reveal: (index: number) => void;
+  toggleFlag: (index: number) => void;
 }
 
 export class DefaultRemoteGame implements RemoteGame {
   size: number;
+  ws: WebSocket;
+  gameStateListener: ((GameState: GameState) => void) | null;
+  _last_known_state: GameState | null;
 
-  constructor() {
+  constructor(ws: WebSocket) {
     this.size = 8;
+    this.ws = ws;
+    this.gameStateListener = null;
+    this._last_known_state = null;
+
+    ws.addEventListener("message", (event) => {
+      const updatedState = JSON.parse(event.data) as GameState;
+
+      const listener = this.gameStateListener;
+
+      if (listener != null) {
+        listener(updatedState);
+      }
+    });
   }
 
-  async getBoard() {
-    const data = await fetch("http://localhost:8080");
-    return await data.json();
+  onBoardUpdated(listener: (gameState: GameState) => void) {
+    this.gameStateListener = listener;
   }
-  async reveal(index: number) {
-    await fetch(
-      "http://localhost:8080/reveal?" +
-        new URLSearchParams({ index: index.toString() }),
-      {
-        method: "POST",
-      }
+
+  getBoard() {
+    return this._last_known_state;
+  }
+
+  reveal(index: number) {
+    console.log(index);
+    this.ws.send(
+      JSON.stringify({
+        action: "reveal",
+        index: index,
+      })
     );
   }
-  async toggleFlag(index: number) {
-    await fetch(
-      "http://localhost:8080/flag?" +
-        new URLSearchParams({ index: index.toString() }),
-      {
-        method: "POST",
-      }
+
+  toggleFlag(index: number) {
+    this.ws.send(
+      JSON.stringify({
+        action: "flag",
+        index: index,
+      })
     );
   }
 }
