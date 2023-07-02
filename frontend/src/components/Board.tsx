@@ -33,7 +33,11 @@ export function Board({ state, onReveal, onToggleFlag }: BoardProps) {
       />
     ));
 
-  return <table className="board">{rows}</table>;
+  return (
+    <table className="board">
+      <tbody>{rows}</tbody>
+    </table>
+  );
 }
 
 function BoardRow({
@@ -47,7 +51,7 @@ function BoardRow({
   const cells = boardState.board_state
     .slice(start, start + boardState.board_size)
     .map((cell, i) => (
-      <td>
+      <td key={i}>
         <CellView
           index={start + i}
           cell={cell}
