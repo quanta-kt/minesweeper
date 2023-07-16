@@ -2,7 +2,7 @@ use actix::Actor;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 
-mod board;
+mod game;
 mod game_handler;
 mod routes;
 

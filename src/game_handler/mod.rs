@@ -16,6 +16,8 @@ pub use player_move::MoveError;
 pub use player_move::PlayerAction;
 pub use player_move::PlayerMove;
 
+use crate::game;
+
 #[cfg(test)]
 mod test;
 
@@ -24,9 +26,6 @@ use std::time::SystemTime;
 
 use actix::{Actor, Context};
 use serde::Deserialize;
-
-use crate::board;
-use crate::board::Board;
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct GameConfig {
@@ -39,7 +38,7 @@ pub struct WsGame {
     config: GameConfig,
 
     // The common unsolved board
-    board: Board,
+    board: game::Board,
 
     players: HashMap<u16, WsPlayerGame>,
 }
@@ -47,7 +46,7 @@ pub struct WsGame {
 impl WsGame {
     pub fn new(config: GameConfig) -> WsGame {
         WsGame {
-            board: Board::generate(config.board_size.clone()),
+            board: game::Board::generate(config.board_size.clone()),
             players: HashMap::new(),
             config,
         }
@@ -56,7 +55,7 @@ impl WsGame {
 
 #[derive(Debug, Clone)]
 struct WsPlayerGame {
-    board: board::Board,
+    board: game::Board,
     name: String,
     start_time: SystemTime,
     finished_time: Option<SystemTime>,

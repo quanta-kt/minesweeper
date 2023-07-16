@@ -3,7 +3,7 @@ use std::time;
 use actix::{Handler, Message};
 use serde::Serialize;
 
-use crate::board::ExternalCell;
+use crate::game::ExternalCell;
 
 use super::GameHandler;
 
