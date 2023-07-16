@@ -153,16 +153,19 @@ impl Board {
 
         while !queue.is_empty() {
             let index = queue.pop_front().unwrap();
-            self.data
-                .get_mut(index)
-                .map(|cell| cell.state = CellState::Revealed);
+
+            let cell = self.data.get_mut(index).unwrap();
+            cell.state = CellState::Revealed;
+
+            let is_empty =
+                cell.cell_type == CellType::Number && self.get_surrounding_mines_count(index) == 0;
+
+            if !is_empty {
+                continue;
+            }
 
             for cell in self.iter_surroundings(index) {
-                let is_empty_and_unrevealed = cell.state == CellState::Unrevealed
-                    && cell.cell_type == CellType::Number
-                    && self.get_surrounding_mines_count(cell.index) == 0;
-
-                if is_empty_and_unrevealed {
+                if cell.state == CellState::Unrevealed {
                     queue.push_back(cell.index);
                 }
             }
