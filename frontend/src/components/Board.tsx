@@ -33,11 +33,7 @@ export function Board({ state, onReveal, onToggleFlag }: BoardProps) {
       />
     ));
 
-  return (
-    <table className="board">
-      <tbody>{rows}</tbody>
-    </table>
-  );
+  return <div className="board">{rows}</div>;
 }
 
 function BoardRow({
@@ -51,17 +47,16 @@ function BoardRow({
   const cells = boardState.board_state
     .slice(start, start + boardState.board_size)
     .map((cell, i) => (
-      <td key={i}>
-        <CellView
-          index={start + i}
-          cell={cell}
-          onReveal={onReveal}
-          onToggleFlag={onToggleFlag}
-        />
-      </td>
+      <CellView
+        key={i}
+        index={start + i}
+        cell={cell}
+        onReveal={onReveal}
+        onToggleFlag={onToggleFlag}
+      />
     ));
 
-  return <tr>{cells}</tr>;
+  return cells;
 }
 
 function CellView({ index, cell, onReveal, onToggleFlag }: CellViewProps) {

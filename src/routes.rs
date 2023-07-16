@@ -1,33 +1,19 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-    time::{SystemTime, UNIX_EPOCH},
+use crate::{
+    board::ExternalCell,
+    game_handler::{self, CreateGame},
 };
-
-use actix::{Actor, StreamHandler};
+use actix::{
+    fut, Actor, ActorContext, ActorFuture, ActorFutureExt, Addr, ContextFutureSpawner,
+    StreamHandler, WrapFuture,
+};
 use actix_web::{error, get, post, web, HttpRequest, Responder, Result};
-use actix_web_actors::ws;
-use rand::Rng;
+use actix_web_actors::ws::{self, CloseReason};
 use serde::{Deserialize, Serialize};
 
-use crate::board::{self, ExternalCell};
-
 struct GameWebSocketActor {
-    player_data: Arc<RwLock<WsPlayerGame>>,
-}
-
-#[derive(Debug)]
-pub struct WsGame {
-    config: NewGameConfig,
-    players: HashMap<u16, Arc<RwLock<WsPlayerGame>>>,
-}
-
-#[derive(Debug)]
-struct WsPlayerGame {
-    board: board::Board,
-    name: String,
-    start_time: SystemTime,
-    finished_time: Option<SystemTime>,
+    game_handler_addr: Addr<game_handler::GameHandler>,
+    game_code: u16,
+    player_code: u16,
 }
 
 #[derive(Serialize, Debug)]
@@ -38,17 +24,32 @@ struct GameStateUpdate {
     finished_time: Option<u64>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "action")]
-enum PlayerAction {
-    #[serde(rename = "flag")]
-    Flag { index: usize },
-    #[serde(rename = "reveal")]
-    Reveal { index: usize },
-}
-
 impl Actor for GameWebSocketActor {
     type Context = ws::WebsocketContext<Self>;
+}
+
+impl GameWebSocketActor {
+    fn send_game_state(&self) -> impl ActorFuture<Self> {
+        self.game_handler_addr
+            .send(game_handler::GetGameState {
+                player_code: self.player_code,
+                game_code: self.game_code,
+            })
+            .into_actor(self)
+            .then(|res, _act, ctx| {
+                let state = res.unwrap();
+
+                if let Ok(state) = state {
+                    let json = serde_json::to_string(&state).expect("serializes GameStateUpdate");
+                    ctx.text(json);
+                } else {
+                    ctx.close(None);
+                    ctx.stop();
+                }
+
+                fut::ready(())
+            })
+    }
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for GameWebSocketActor {
@@ -56,138 +57,99 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for GameWebSocketActo
         if let Ok(ws::Message::Text(message)) = item {
             let action = serde_json::from_str(&message);
 
-            if action.is_err() {
-                ctx.close(Some(ws::CloseReason {
-                    code: ws::CloseCode::Unsupported,
-                    description: Some("Invalid payload to websocket".to_owned()),
+            if let Err(_) = action {
+                ctx.close(Some(CloseReason {
+                    code: ws::CloseCode::Invalid,
+                    description: Some("Invalid message received over web socket.".to_string()),
                 }));
 
                 return;
             }
 
-            let action = action.unwrap();
+            let action: game_handler::PlayerAction = action.unwrap();
 
-            let player_game = &mut self.player_data.write();
-            let player_game = player_game.as_mut().unwrap();
-
-            match action {
-                PlayerAction::Flag { index } => player_game.board.toggle_flag(index).unwrap(),
-                PlayerAction::Reveal { index } => player_game.board.reveal(index).unwrap(),
-            }
-
-            send_game_state(player_game, ctx);
+            self.game_handler_addr
+                .send(game_handler::PlayerMove {
+                    game_code: self.game_code,
+                    player_code: self.player_code,
+                    action,
+                })
+                .into_actor(self)
+                .then(|_res, act, ctx| act.send_game_state())
+                .then(|_, _, _| fut::ready(()))
+                .wait(ctx);
         }
     }
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        let player_game = self.player_data.read();
-        let player_game = player_game.as_ref().unwrap();
-        send_game_state(player_game, ctx);
+        self.send_game_state()
+            .then(|_, _, _| fut::ready(()))
+            .wait(ctx);
     }
-}
-
-fn send_game_state(player_game: &WsPlayerGame, ctx: &mut <GameWebSocketActor as Actor>::Context) {
-    let state = GameStateUpdate {
-        board_state: player_game.board.get_external_state(),
-        board_size: player_game.board.size(),
-        start_time: Some(
-            player_game
-                .start_time
-                .duration_since(UNIX_EPOCH)
-                .expect("time went backwards")
-                .as_secs(),
-        ),
-        finished_time: None,
-    };
-
-    let json = serde_json::to_string(&state).expect("serializes GameStateUpdate");
-    ctx.text(json);
 }
 
 #[derive(Deserialize, Debug)]
 struct JoinGameQuery {
     code: String,
-    name: String,
+    player_name: String,
 }
 
 #[get("join-game")]
 async fn join_game(
     req: HttpRequest,
     query: web::Query<JoinGameQuery>,
-    games: web::Data<RwLock<HashMap<u16, WsGame>>>,
+    game_handler: web::Data<Addr<game_handler::GameHandler>>,
     stream: web::Payload,
 ) -> Result<impl Responder> {
-    let code = u16::from_str_radix(&query.code, 16)
-        .map_err(|_| error::ErrorBadRequest("Invalid game code"))?;
+    let game_code = u16::from_str_radix(&query.code, 16)
+        .map_err(|_err| error::ErrorBadRequest("Invalid game code"))?;
 
-    let mut games = games.write().unwrap();
+    let player_code = game_handler
+        .send(game_handler::JoinGame::new(
+            game_code,
+            query.player_name.to_owned(),
+        ))
+        .await
+        .map_err(|err| error::ErrorInternalServerError(err))?
+        .map_err(|err| match err {
+            game_handler::JoinGameError::GameFull => error::ErrorBadRequest("Game is full"),
+            game_handler::JoinGameError::GameNotFound => {
+                error::ErrorNotFound("Unable to find the game")
+            }
+        })?;
 
-    let game = games
-        .get_mut(&code)
-        .ok_or(error::ErrorNotFound("Can't find that game"))?;
-
-    if game.players.len() >= game.config.players_limit {
-        return Err(error::ErrorBadRequest("Game is already full"));
-    }
-
-    let player_code = (0..0xff)
-        .map(|_| rand::thread_rng().gen_range(0u16..0xffffu16))
-        .filter(|player_code| !game.players.contains_key(player_code))
-        .next()
-        .expect("generate a player code not already present");
-
-    let player_data = Arc::new(RwLock::new(WsPlayerGame {
-        board: board::Board::generate(game.config.board_size),
-        name: query.name.to_owned(),
-        start_time: SystemTime::now(),
-        finished_time: None,
-    }));
-
-    game.players.insert(player_code, player_data.clone());
-
-    ws::start(
+    Ok(ws::start(
         GameWebSocketActor {
-            player_data: player_data.clone(),
+            game_handler_addr: game_handler.as_ref().clone(),
+            game_code,
+            player_code,
         },
         &req,
         stream,
-    )
-}
-
-#[derive(Debug, Deserialize)]
-struct NewGameConfig {
-    board_size: usize,
-    players_limit: usize,
+    ))
 }
 
 #[derive(Debug, Serialize)]
 struct NewGameResponse {
     code: String,
 }
+
 #[post("create-game")]
 async fn create_game(
-    config: web::Json<NewGameConfig>,
-    games: web::Data<RwLock<HashMap<u16, WsGame>>>,
-) -> impl Responder {
-    let mut games = games.write().unwrap();
+    config: web::Json<CreateGame>,
+    game_handler: web::Data<Addr<game_handler::GameHandler>>,
+) -> Result<impl Responder> {
+    let config = config.into_inner();
 
-    let code = (0..0xff)
-        .map(|_| rand::thread_rng().gen_range(0u16..0xffffu16))
-        .filter(|code| !games.contains_key(&code))
-        .next()
-        .expect("generate a random code not already present");
+    let code = game_handler
+        .send(config)
+        .await
+        .map_err(|_| error::ErrorInternalServerError("Something went terribly wrong."))?
+        .map_err(|_| error::ErrorInternalServerError("Something went terribly wrong."))?;
 
-    games.insert(
-        code,
-        WsGame {
-            config: config.0,
-            players: HashMap::new(),
-        },
-    );
-
-    web::Json(NewGameResponse {
+    Ok(web::Json(NewGameResponse {
         code: format!("{:X}", code),
-    })
+    }))
 }
 
 pub fn routes() -> actix_web::Scope {

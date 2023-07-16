@@ -7,10 +7,20 @@
   justify-content: center;
 }
 
+.board {
+  margin: 3rem;
+  min-width: 300px;
+  max-width: 1000px;
+  display: grid;
+  grid-template-rows: repeat(8, 1fr);
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0;
+}
+
 .board .cell {
   aspect-ratio: 1;
-  font-size: 3rem;
-  width: 5rem;
+  min-width: 2rem;
+  font-size: 1em;
 }
 
 .new-game-form-container {

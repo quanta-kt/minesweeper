@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 actix = "0.13.0"
 actix-cors = "0.6.4"
+actix-rt = "2.8.0"
 actix-web = "4.3.1"
 actix-web-actors = "4.2.0"
 env_logger = "0.10.0"

@@ -33,7 +33,7 @@ export default function GameCreationFrom({
 
           <button
             onClick={() =>
-              onRequestGame({ boardSize: size, playersLimit: 8 }, name)
+              onRequestGame({ boardSize: size, playerLimit: 8 }, name)
             }
           >
             Start
